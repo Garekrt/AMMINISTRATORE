@@ -3,56 +3,129 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dati Atleti Supabase</title>
+    <title>Accesso Dati Atleti Supabase</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; }
         h1 { color: #1e88e5; }
+        /* Stili per il modulo di Login */
+        #auth-container { max-width: 400px; margin: 50px auto; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); text-align: center; }
+        #auth-container input { width: 90%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        /* Stili per i Controlli e i Dati */
         #controls { margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
         #row-count { font-size: 1.2em; font-weight: bold; color: #00897b; }
-        button { 
-            padding: 10px 15px; 
-            background-color: #4caf50; 
-            color: white; 
-            border: none; 
-            border-radius: 5px; 
-            cursor: pointer; 
-            font-size: 1em;
-            transition: background-color 0.3s;
-        }
-        button:hover { background-color: #388e3c; }
+        button { padding: 10px 15px; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 1em; transition: background-color 0.3s; margin-left: 10px; }
+        #login-btn { background-color: #1e88e5; }
+        #login-btn:hover { background-color: #1565c0; }
+        #export-csv-btn { background-color: #4caf50; }
+        #export-csv-btn:hover { background-color: #388e3c; }
+        #logout-btn { background-color: #f44336; }
+        #logout-btn:hover { background-color: #d32f2f; }
+        
         table { width: 100%; border-collapse: collapse; margin-top: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); background-color: white; }
         th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
         th { background-color: #bbdefb; color: #1e88e5; font-weight: bold; }
         tr:nth-child(even) { background-color: #f9f9f9; }
-        tr:hover { background-color: #e3f2fd; }
         #loading { color: orange; font-weight: bold; }
-        #error { color: red; font-weight: bold; padding: 10px; border: 1px solid red; background-color: #ffebee; }
+        #error, #auth-message { color: red; font-weight: bold; margin-top: 10px; }
     </style>
 </head>
 <body>
 
-    <h1>Elenco Atleti con Società (Trofeo Rossini)</h1>
+    <h1>Gestione Atleti (Accesso Riservato)</h1>
 
-    <div id="loading">Caricamento dati...</div>
-    <div id="error" style="display: none;"></div>
-
-    <div id="controls" style="display: none;">
-        <span id="row-count"></span>
-        <button id="export-csv-btn" disabled>Esporta in CSV</button>
+    <div id="auth-container">
+        <h2>Accedi</h2>
+        <input type="email" id="email" placeholder="Email" required><br>
+        <input type="password" id="password" placeholder="Password" required><br>
+        <button id="login-btn">Accedi</button>
+        <p id="auth-message"></p>
     </div>
 
-    <div id="atleti-container">
+    <div id="content-container" style="display: none;">
+        <div id="controls">
+            <span id="row-count"></span>
+            <div>
+                <button id="export-csv-btn" disabled>Esporta in CSV</button>
+                <button id="logout-btn">Esci</button>
+            </div>
         </div>
+        
+        <div id="loading">Caricamento dati...</div>
+        <div id="error" style="display: none;"></div>
+        <div id="atleti-container">
+            </div>
+    </div>
 
     <script>
-        // *** 2. CONFIGURAZIONE SUPABASE - SOSTITUISCI QUESTI VALORI ***
+        // *** CONFIGURAZIONE SUPABASE - SOSTITUISCI QUESTI VALORI ***
         const SUPABASE_URL = 'https://biuvdnwscvijltnqjxxe.supabase.co'; 
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJpdXZkbndzY3Zpamx0bnFqeHhlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1ODU1MjEwNiwiZXhwIjoyMDc0MTI4MTA2fQ.LkYdTsVio-lEDV8Uycpol_u41p8IUBbrNjofmDymsHQ'; 
 
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // *** 3. FUNZIONE PER IL FETCH DEI DATI E RENDERING ***
+        // Riferimenti agli elementi DOM
+        const authContainer = document.getElementById('auth-container');
+        const contentContainer = document.getElementById('content-container');
+        const loginButton = document.getElementById('login-btn');
+        const logoutButton = document.getElementById('logout-btn');
+        const authMessage = document.getElementById('auth-message');
+        const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
+
+        // Funzione principale che gestisce la visualizzazione del contenuto protetto
+        function displayContent(session) {
+            if (session) {
+                // Utente autenticato: mostra il contenuto, nasconde il login
+                authContainer.style.display = 'none';
+                contentContainer.style.display = 'block';
+                fetchAtleti(); // Carica i dati
+            } else {
+                // Utente non autenticato: mostra il login, nasconde il contenuto
+                authContainer.style.display = 'block';
+                contentContainer.style.display = 'none';
+                // Pulisci i dati se l'utente esce o la sessione scade
+                document.getElementById('atleti-container').innerHTML = '';
+            }
+        }
+
+        // *** LOGICA DI AUTENTICAZIONE ***
+        async function handleLogin() {
+            authMessage.textContent = '';
+            loginButton.textContent = 'Accesso...';
+            loginButton.disabled = true;
+
+            const { error } = await supabaseClient.auth.signInWithPassword({
+                email: emailInput.value,
+                password: passwordInput.value,
+            });
+
+            if (error) {
+                authMessage.textContent = 'Errore di accesso: ' + error.message;
+                console.error(error);
+            }
+            
+            loginButton.textContent = 'Accedi';
+            loginButton.disabled = false;
+        }
+
+        async function handleLogout() {
+            const { error } = await supabaseClient.auth.signOut();
+            if (error) {
+                console.error('Errore durante il logout:', error);
+            }
+        }
+
+        // Ascolta i cambiamenti di stato (login, logout, refresh)
+        supabaseClient.auth.onAuthStateChange((event, session) => {
+            displayContent(session);
+        });
+
+        // Associa i listener ai bottoni
+        loginButton.addEventListener('click', handleLogin);
+        logoutButton.addEventListener('click', handleLogout);
+
+        // *** FUNZIONE PER IL FETCH DEI DATI E RENDERING ***
         async function fetchAtleti() {
             const loading = document.getElementById('loading');
             const errorDiv = document.getElementById('error');
@@ -64,10 +137,9 @@
             loading.style.display = 'block';
             errorDiv.style.display = 'none';
             container.innerHTML = ''; 
-            controls.style.display = 'none';
             exportButton.disabled = true;
 
-            // Query Supabase
+            // Query Supabase: richiede che l'utente sia autenticato (RLS)
             const { data: atleti, error } = await supabaseClient
                 .from('atleti') 
                 .select(`
@@ -90,33 +162,24 @@
 
             if (error) {
                 console.error('Errore nel recupero dati:', error);
-                errorDiv.textContent = 'Errore nel recupero dati: ' + error.message + '. Controlla RLS e credenziali.';
+                errorDiv.textContent = 'Errore nel recupero dati: ' + error.message + '. Verifica la Policy RLS per il ruolo "authenticated".';
                 errorDiv.style.display = 'block';
                 return;
             }
             
-            // *** 4. RENDERING E CONTATORE ***
+            // RENDERING E CONTATORE 
             if (atleti && atleti.length > 0) {
                 // Aggiorna il contatore
                 rowCountSpan.textContent = `Totale Atleti: ${atleti.length}`;
-                controls.style.display = 'flex';
                 exportButton.disabled = false;
                 
                 let tableHTML = '<table>';
                 tableHTML += `
                     <thead>
                         <tr>
-                            <th>Nome</th>
-                            <th>Cognome</th>
-                            <th>Genere</th>
-                            <th>Data Nascita</th>
-                            <th>Classe</th>
-                            <th>Specialità</th>
-                            <th>Peso</th>
-                            <th>Cintura</th>
-                            <th>Società</th>
-                            <th>Email Società</th>
-                            <th>Creato Il</th>
+                            <th>Nome</th><th>Cognome</th><th>Genere</th><th>Data Nascita</th>
+                            <th>Classe</th><th>Specialità</th><th>Peso</th><th>Cintura</th>
+                            <th>Società</th><th>Email Società</th><th>Creato Il</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -129,17 +192,10 @@
                     
                     tableHTML += `
                         <tr>
-                            <td>${atleta.first_name}</td>
-                            <td>${atleta.last_name}</td>
-                            <td>${atleta.gender}</td>
-                            <td>${atleta.birthdate}</td>
-                            <td>${atleta.classe}</td>
-                            <td>${atleta.specialty}</td>
-                            <td>${atleta.weight_category}</td>
-                            <td>${atleta.belt}</td>
-                            <td>${societaNome}</td>
-                            <td>${societaEmail}</td>
-                            <td>${dataCreazione}</td>
+                            <td>${atleta.first_name}</td><td>${atleta.last_name}</td><td>${atleta.gender}</td>
+                            <td>${atleta.birthdate}</td><td>${atleta.classe}</td><td>${atleta.specialty}</td>
+                            <td>${atleta.weight_category}</td><td>${atleta.belt}</td><td>${societaNome}</td>
+                            <td>${societaEmail}</td><td>${dataCreazione}</td>
                         </tr>
                     `;
                 });
@@ -147,19 +203,19 @@
                 tableHTML += '</tbody></table>';
                 container.innerHTML = tableHTML;
                 
-                // Associa la funzione di esportazione al pulsante, passandogli i dati.
+                // Associa la funzione di esportazione al pulsante
                 exportButton.onclick = () => exportToCSV(atleti);
 
             } else {
-                container.innerHTML = '<p>Nessun atleta trovato. Verifica se la tua Policy RLS permette la lettura pubblica sulla tabella "atleti".</p>';
+                container.innerHTML = '<p>Nessun atleta trovato.</p>';
+                rowCountSpan.textContent = `Totale Atleti: 0`;
             }
         } 
         
-        // *** 5. FUNZIONE DI ESPORTAZIONE CSV ***
+        // *** FUNZIONE DI ESPORTAZIONE CSV ***
         function exportToCSV(data) {
             if (!data || data.length === 0) return;
 
-            // 1. Definisci le intestazioni e mappale ai campi JSON
             const headers = [
                 "Nome", "Cognome", "Genere", "Data Nascita", "Classe", 
                 "Specialità", "Categoria Peso", "Cintura", "Società", 
@@ -168,30 +224,22 @@
             
             let csv = headers.join(',') + '\n';
 
-            // 2. Mappa i dati della riga e formatta
             data.forEach(atleta => {
                 const societaNome = atleta.societa ? atleta.societa.nome : '';
                 const societaEmail = atleta.societa ? atleta.societa.email : '';
                 const dataCreazione = atleta.created_at ? new Date(atleta.created_at).toLocaleDateString() : '';
                 
+                // Mappa i campi e li racchiude tra virgolette per la compatibilità CSV
                 const row = [
-                    atleta.first_name,
-                    atleta.last_name,
-                    atleta.gender,
-                    atleta.birthdate,
-                    atleta.classe,
-                    atleta.specialty,
-                    atleta.weight_category,
-                    atleta.belt,
-                    societaNome,
-                    societaEmail,
-                    dataCreazione
-                ].map(field => `"${String(field).replace(/"/g, '""')}"`).join(','); // Aggiungi virgolette per gestire i campi con virgole
+                    atleta.first_name, atleta.last_name, atleta.gender, atleta.birthdate, 
+                    atleta.classe, atleta.specialty, atleta.weight_category, atleta.belt, 
+                    societaNome, societaEmail, dataCreazione
+                ].map(field => `"${String(field).replace(/"/g, '""')}"`).join(','); 
                 
                 csv += row + '\n';
             });
 
-            // 3. Crea e scarica il file
+            // Crea e scarica il file
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
             if (link.download !== undefined) {
@@ -205,9 +253,6 @@
             }
         }
 
-        // 6. Avvia il recupero dei dati al caricamento dello script
-        fetchAtleti();
     </script>
-
 </body>
 </html>
