@@ -14,7 +14,7 @@
         tr:nth-child(even) { background-color: #f9f9f9; }
         tr:hover { background-color: #e3f2fd; }
         #loading { color: orange; font-weight: bold; }
-        #error { color: red; font-weight: bold; padding: 10px; border: 1px solid red; background-color: #ffebee; display: none; }
+        #error { color: red; font-weight: bold; padding: 10px; border: 1px solid red; background-color: #ffebee; }
     </style>
 </head>
 <body>
@@ -31,101 +31,48 @@
         const SUPABASE_URL = 'https://biuvdnwscvijltnqjxxe.supabase.co'; 
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJpdXZkbndzY3Zpamx0bnFqeHhlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1ODU1MjEwNiwiZXhwIjoyMDc0MTI4MTA2fQ.LkYdTsVio-lEDV8Uycpol_u41p8IUBbrNjofmDymsHQ'; 
 
-        // Creazione del client Supabase. Usiamo 'supabaseClient' per EVITARE l'errore TDZ.
+        // Crea il client Supabase. Usiamo 'supabaseClient' per evitare l'errore di inizializzazione.
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         // *** 3. FUNZIONE PER IL FETCH DEI DATI ***
         async function fetchAtleti() {
-    const loading = document.getElementById('loading');
-    const errorDiv = document.getElementById('error');
-    const container = document.getElementById('atleti-container');
+            const loading = document.getElementById('loading');
+            const errorDiv = document.getElementById('error');
+            const container = document.getElementById('atleti-container');
 
-    loading.style.display = 'block';
-    errorDiv.style.display = 'none';
-    container.innerHTML = ''; 
+            loading.style.display = 'block';
+            errorDiv.style.display = 'none';
+            container.innerHTML = ''; 
 
-    // Query Supabase: SENZA COMMENTI ALL'INTERNO DELLA STRINGA TEMPLATE
-    const { data: atleti, error } = await supabaseClient
-        .from('atleti') 
-        .select(`
-            first_name,
-            last_name,
-            gender,
-            birthdate,
-            classe,
-            specialty,
-            weight_category,
-            belt,
-            created_at,
-            societa:society_id (
-                nome,
-                email
-            )
-        `);
+            // Query Supabase: Equivalente del tuo JOIN SQL, SENZA COMMENTI NELLA STRINGA TEMPLATE
+            const { data: atleti, error } = await supabaseClient
+                .from('atleti') 
+                .select(`
+                    first_name,
+                    last_name,
+                    gender,
+                    birthdate,
+                    classe,
+                    specialty,
+                    weight_category,
+                    belt,
+                    created_at,
+                    societa:society_id (
+                        nome,
+                        email
+                    )
+                `);
 
-    loading.style.display = 'none';
+            loading.style.display = 'none';
 
-    if (error) {
-        console.error('Errore nel recupero dati:', error);
-        // Messaggio d'errore più chiaro per l'utente
-        errorDiv.textContent = 'Errore nel recupero dati: ' + error.message + '. Verifica RLS e credenziali.';
-        errorDiv.style.display = 'block';
-        return;
-    }
-    
-    // ... (il resto del codice di rendering è corretto)
-    if (atleti && atleti.length > 0) {
-        let tableHTML = '<table>';
-        // ... (intestazione tabella)
-        tableHTML += `
-            <thead>
-                <tr>
-                    <th>Nome</th>
-                    <th>Cognome</th>
-                    <th>Genere</th>
-                    <th>Data Nascita</th>
-                    <th>Classe</th>
-                    <th>Specialità</th>
-                    <th>Peso</th>
-                    <th>Cintura</th>
-                    <th>Società</th>
-                    <th>Email Società</th>
-                    <th>Creato Il</th>
-                </tr>
-            </thead>
-            <tbody>
-        `;
-
-        atleti.forEach(atleta => {
-            const societaNome = atleta.societa ? atleta.societa.nome : 'N/D';
-            const societaEmail = atleta.societa ? atleta.societa.email : 'N/D';
-            const dataCreazione = atleta.created_at ? new Date(atleta.created_at).toLocaleDateString() : 'N/D';
+            if (error) {
+                console.error('Errore nel recupero dati:', error);
+                errorDiv.textContent = 'Errore nel recupero dati: ' + error.message + '. Controlla RLS e credenziali.';
+                errorDiv.style.display = 'block';
+                return;
+            }
             
-            tableHTML += `
-                <tr>
-                    <td>${atleta.first_name}</td>
-                    <td>${atleta.last_name}</td>
-                    <td>${atleta.gender}</td>
-                    <td>${atleta.birthdate}</td>
-                    <td>${atleta.classe}</td>
-                    <td>${atleta.specialty}</td>
-                    <td>${atleta.weight_category}</td>
-                    <td>${atleta.belt}</td>
-                    <td>${societaNome}</td>
-                    <td>${societaEmail}</td>
-                    <td>${dataCreazione}</td>
-                </tr>
-            `;
-        });
-
-        tableHTML += '</tbody></table>';
-        container.innerHTML = tableHTML;
-    } else {
-        container.innerHTML = '<p>Nessun atleta trovato o verifica la Policy di lettura sulla tabella "atleti".</p>';
-    }
-}
-            
-            // *** 4. RENDERING DEI DATI IN UNA TABELLA HTML ***
+            // *** 4. RENDERING DEI DATI (TUTTO ALL'INTERNO DI QUESTO SCOPE) ***
             if (atleti && atleti.length > 0) {
                 let tableHTML = '<table>';
                 tableHTML += `
@@ -147,6 +94,7 @@
                     <tbody>
                 `;
 
+                // Questa sezione usa 'atleti' e deve stare dentro la funzione fetchAtleti
                 atleti.forEach(atleta => {
                     // Accesso ai dati della tabella 'societa' tramite la relazione 'societa'
                     const societaNome = atleta.societa ? atleta.societa.nome : 'N/D';
@@ -173,8 +121,9 @@
                 tableHTML += '</tbody></table>';
                 container.innerHTML = tableHTML;
             } else {
-                container.innerHTML = '<p>Nessun atleta trovato o verifica la RLS (Row Level Security) e la Policy di lettura sulla tabella "atleti".</p>';
+                container.innerHTML = '<p>Nessun atleta trovato. Verifica se la tua Policy RLS permette la lettura pubblica sulla tabella "atleti".</p>';
             }
+        } // FINE DELLA FUNZIONE fetchAtleti
 
         // 5. Avvia il recupero dei dati al caricamento dello script
         fetchAtleti();
