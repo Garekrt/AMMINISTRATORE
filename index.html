@@ -171,7 +171,6 @@
             if (data && data.length > 0) {
                 allAtletiData = data; // Salva i dati originali
                 applyFiltersAndSorting(); // Applica ordinamento e filtro iniziali
-                exportButton.onclick = () => exportToCSV(allAtletiData); // Associa export ai dati completi
             } else {
                 container.innerHTML = '<p>Nessun atleta trovato.</p>';
                 rowCountSpan.textContent = `Totale Atleti: 0`;
@@ -198,18 +197,30 @@
 
             // 2. ORDINAMENTO
             displayData.sort((a, b) => {
-                let aVal = a[currentSortColumn] || (a.societa && a.societa[currentSortColumn.replace('societa.', '')]) || '';
-                let bVal = b[currentSortColumn] || (b.societa && b.societa[currentSortColumn.replace('societa.', '')]) || '';
+                // Gestisce l'ordinamento anche sui campi relazionali (societa.nome, societa.email)
+                let sortCol = currentSortColumn;
+                let aVal, bVal;
+
+                if (sortCol.includes('.')) {
+                    // Campo relazionale (es. societa.nome)
+                    const [rel, field] = sortCol.split('.');
+                    aVal = a[rel] ? a[rel][field] : '';
+                    bVal = b[rel] ? b[rel][field] : '';
+                } else {
+                    // Campo diretto
+                    aVal = a[sortCol];
+                    bVal = b[sortCol];
+                }
 
                 // Gestione dei valori nulli o non definiti
-                if (aVal === '') aVal = currentSortDirection === 'asc' ? 'zzzzzzz' : '';
-                if (bVal === '') bVal = currentSortDirection === 'asc' ? 'zzzzzzz' : '';
+                if (aVal === null || aVal === undefined) aVal = currentSortDirection === 'asc' ? 'zzzzzzz' : '';
+                if (bVal === null || bVal === undefined) bVal = currentSortDirection === 'asc' ? 'zzzzzzz' : '';
                 
                 // Conversione per l'ordinamento numerico e di data (base)
                 if (!isNaN(Date.parse(aVal)) && !isNaN(Date.parse(bVal))) {
                      aVal = new Date(aVal);
                      bVal = new Date(bVal);
-                } else if (!isNaN(parseFloat(aVal)) && !isNaN(parseFloat(bVal))) {
+                } else if (!isNaN(parseFloat(aVal)) && !isNaN(parseFloat(bVal)) && isFinite(aVal) && isFinite(bVal)) {
                      aVal = parseFloat(aVal);
                      bVal = parseFloat(bVal);
                 } else {
@@ -239,14 +250,20 @@
 
         // Funzione per disegnare la tabella HTML
         function renderAtletiTable(atleti) {
+            // Aggiorna il contatore
             rowCountSpan.textContent = `Risultati: ${atleti.length} / ${allAtletiData.length}`;
-            exportButton.disabled = allAtletiData.length === 0;
+            exportButton.disabled = atleti.length === 0;
 
             if (atleti.length === 0) {
                 container.innerHTML = '<p>Nessun risultato trovato per la ricerca corrente.</p>';
+                // Associa l'onclick a una funzione vuota per sicurezza
+                exportButton.onclick = () => {}; 
                 return;
             }
 
+            // Associa l'onclick ai dati CORRENTEMENTE visualizzati (filtrati/ordinati)
+            exportButton.onclick = () => exportToCSV(atleti);
+            
             let tableHTML = '<table>';
             tableHTML += `
                 <thead>
@@ -300,8 +317,9 @@
             return `<th onclick="handleSort('${column}')" class="${sortClass}">${label}<span class="sort-icon"></span></th>`;
         }
 
-        // --- FUNZIONE DI ESPORTAZIONE CSV (Invariata) ---
+        // --- FUNZIONE DI ESPORTAZIONE CSV ---
         function exportToCSV(data) {
+            // Questa funzione ora riceve solo i dati filtrati e ordinati
             if (!data || data.length === 0) return;
 
             const headers = [
@@ -317,6 +335,7 @@
                 const societaEmail = atleta.societa ? atleta.societa.email : '';
                 const dataCreazione = atleta.created_at ? new Date(atleta.created_at).toLocaleDateString() : '';
                 
+                // Mappa i campi e li racchiude tra virgolette per la compatibilità CSV
                 const row = [
                     atleta.first_name, atleta.last_name, atleta.gender, atleta.birthdate, 
                     atleta.classe, atleta.specialty, atleta.weight_category, atleta.belt, 
@@ -326,12 +345,13 @@
                 csv += row + '\n';
             });
 
+            // Crea e scarica il file
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
             if (link.download !== undefined) {
                 const url = URL.createObjectURL(blob);
                 link.setAttribute("href", url);
-                link.setAttribute("download", "atleti_supabase.csv");
+                link.setAttribute("download", "atleti_filtrati.csv");
                 link.style.visibility = 'hidden';
                 document.body.appendChild(link);
                 link.click();
