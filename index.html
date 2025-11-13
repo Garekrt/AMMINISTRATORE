@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dati Atleti Supabase</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        #loading { color: blue; }
+        #error { color: red; }
+    </style>
+</head>
+<body>
+
+    <h1>Elenco Atleti con Società</h1>
+
+    <div id="loading">Caricamento dati...</div>
+    <div id="error" style="display: none;"></div>
+    <div id="atleti-container">
+        </div>
+
+    <script>
+        // *** 1. CONFIGURAZIONE SUPABASE ***
+        // SOSTITUISCI CON I TUOI VALORI REALI!
+        const SUPABASE_URL = 'IL_TUO_URL_PROGETTO_SUPABASE'; 
+        const SUPABASE_ANON_KEY = 'LA_TUA_CHIAVE_ANON_PUBBLICA'; 
+
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // *** 2. FUNZIONE PER IL FETCH DEI DATI ***
+        async function fetchAtleti() {
+            const loading = document.getElementById('loading');
+            const errorDiv = document.getElementById('error');
+            const container = document.getElementById('atleti-container');
+
+            loading.style.display = 'block';
+            errorDiv.style.display = 'none';
+            container.innerHTML = ''; // Pulisci il contenuto precedente
+
+            // La tua query SQL è un JOIN implicito.
+            // In Supabase JS, questo viene gestito usando la sintassi `select()` annidata.
+            // Assumo che la Foreign Key in 'atleti' sia 'society_id' che punta a 'societa(id)'.
+            // I nomi delle colonne sono ripresi direttamente dalla tua SELECT:
+            // a.first_name, ..., s.nome AS societa_nome, s.email AS mail_societa
+            const { data: atleti, error } = await supabase
+                .from('atleti') // Dalla tabella principale (Alias 'a' nel tuo SQL)
+                .select(`
+                    first_name,
+                    last_name,
+                    gender,
+                    birthdate,
+                    classe,
+                    specialty,
+                    weight_category,
+                    belt,
+                    created_at,
+                    societa:society_id ( // Il nome della relazione: 'societa' e il nome della FK: 'society_id'
+                        nome,
+                        email
+                    )
+                `);
+
+            loading.style.display = 'none';
+
+            if (error) {
+                console.error('Errore nel recupero dati:', error);
+                errorDiv.textContent = 'Errore nel recupero dati: ' + error.message;
+                errorDiv.style.display = 'block';
+                return;
+            }
+            
+            // *** 3. RENDERING DEI DATI ***
+            if (atleti && atleti.length > 0) {
+                let tableHTML = '<table>';
+                tableHTML += `
+                    <thead>
+                        <tr>
+                            <th>Nome</th>
+                            <th>Cognome</th>
+                            <th>Società</th>
+                            <th>Email Società</th>
+                            <th>Genere</th>
+                            <th>Data Nascita</th>
+                            <th>Classe</th>
+                            <th>Specialità</th>
+                            <th>Categoria Peso</th>
+                            <th>Cintura</th>
+                            <th>Creato Il</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                `;
+
+                atleti.forEach(atleta => {
+                    // Accedi ai dati del JOIN tramite l'oggetto 'societa'
+                    const societaNome = atleta.societa ? atleta.societa.nome : 'N/D';
+                    const societaEmail = atleta.societa ? atleta.societa.email : 'N/D';
+                    
+                    tableHTML += `
+                        <tr>
+                            <td>${atleta.first_name}</td>
+                            <td>${atleta.last_name}</td>
+                            <td>${societaNome}</td>
+                            <td>${societaEmail}</td>
+                            <td>${atleta.gender}</td>
+                            <td>${atleta.birthdate}</td>
+                            <td>${atleta.classe}</td>
+                            <td>${atleta.specialty}</td>
+                            <td>${atleta.weight_category}</td>
+                            <td>${atleta.belt}</td>
+                            <td>${new Date(atleta.created_at).toLocaleDateString()}</td>
+                        </tr>
+                    `;
+                });
+
+                tableHTML += '</tbody></table>';
+                container.innerHTML = tableHTML;
+            } else {
+                container.innerHTML = '<p>Nessun atleta trovato.</p>';
+            }
+        }
+
+        // Avvia il recupero dei dati al caricamento della pagina
+        fetchAtleti();
+    </script>
+
+</body>
+</html>
