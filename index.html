@@ -8,6 +8,19 @@
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; }
         h1 { color: #1e88e5; }
+        #controls { margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+        #row-count { font-size: 1.2em; font-weight: bold; color: #00897b; }
+        button { 
+            padding: 10px 15px; 
+            background-color: #4caf50; 
+            color: white; 
+            border: none; 
+            border-radius: 5px; 
+            cursor: pointer; 
+            font-size: 1em;
+            transition: background-color 0.3s;
+        }
+        button:hover { background-color: #388e3c; }
         table { width: 100%; border-collapse: collapse; margin-top: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); background-color: white; }
         th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
         th { background-color: #bbdefb; color: #1e88e5; font-weight: bold; }
@@ -23,6 +36,12 @@
 
     <div id="loading">Caricamento dati...</div>
     <div id="error" style="display: none;"></div>
+
+    <div id="controls" style="display: none;">
+        <span id="row-count"></span>
+        <button id="export-csv-btn" disabled>Esporta in CSV</button>
+    </div>
+
     <div id="atleti-container">
         </div>
 
@@ -31,20 +50,24 @@
         const SUPABASE_URL = 'https://biuvdnwscvijltnqjxxe.supabase.co'; 
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJpdXZkbndzY3Zpamx0bnFqeHhlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1ODU1MjEwNiwiZXhwIjoyMDc0MTI4MTA2fQ.LkYdTsVio-lEDV8Uycpol_u41p8IUBbrNjofmDymsHQ'; 
 
-        // Crea il client Supabase. Usiamo 'supabaseClient' per evitare l'errore di inizializzazione.
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // *** 3. FUNZIONE PER IL FETCH DEI DATI ***
+        // *** 3. FUNZIONE PER IL FETCH DEI DATI E RENDERING ***
         async function fetchAtleti() {
             const loading = document.getElementById('loading');
             const errorDiv = document.getElementById('error');
             const container = document.getElementById('atleti-container');
+            const controls = document.getElementById('controls');
+            const rowCountSpan = document.getElementById('row-count');
+            const exportButton = document.getElementById('export-csv-btn');
 
             loading.style.display = 'block';
             errorDiv.style.display = 'none';
             container.innerHTML = ''; 
+            controls.style.display = 'none';
+            exportButton.disabled = true;
 
-            // Query Supabase: Equivalente del tuo JOIN SQL, SENZA COMMENTI NELLA STRINGA TEMPLATE
+            // Query Supabase
             const { data: atleti, error } = await supabaseClient
                 .from('atleti') 
                 .select(`
@@ -72,8 +95,13 @@
                 return;
             }
             
-            // *** 4. RENDERING DEI DATI (TUTTO ALL'INTERNO DI QUESTO SCOPE) ***
+            // *** 4. RENDERING E CONTATORE ***
             if (atleti && atleti.length > 0) {
+                // Aggiorna il contatore
+                rowCountSpan.textContent = `Totale Atleti: ${atleti.length}`;
+                controls.style.display = 'flex';
+                exportButton.disabled = false;
+                
                 let tableHTML = '<table>';
                 tableHTML += `
                     <thead>
@@ -94,9 +122,7 @@
                     <tbody>
                 `;
 
-                // Questa sezione usa 'atleti' e deve stare dentro la funzione fetchAtleti
                 atleti.forEach(atleta => {
-                    // Accesso ai dati della tabella 'societa' tramite la relazione 'societa'
                     const societaNome = atleta.societa ? atleta.societa.nome : 'N/D';
                     const societaEmail = atleta.societa ? atleta.societa.email : 'N/D';
                     const dataCreazione = atleta.created_at ? new Date(atleta.created_at).toLocaleDateString() : 'N/D';
@@ -120,12 +146,66 @@
 
                 tableHTML += '</tbody></table>';
                 container.innerHTML = tableHTML;
+                
+                // Associa la funzione di esportazione al pulsante, passandogli i dati.
+                exportButton.onclick = () => exportToCSV(atleti);
+
             } else {
                 container.innerHTML = '<p>Nessun atleta trovato. Verifica se la tua Policy RLS permette la lettura pubblica sulla tabella "atleti".</p>';
             }
-        } // FINE DELLA FUNZIONE fetchAtleti
+        } 
+        
+        // *** 5. FUNZIONE DI ESPORTAZIONE CSV ***
+        function exportToCSV(data) {
+            if (!data || data.length === 0) return;
 
-        // 5. Avvia il recupero dei dati al caricamento dello script
+            // 1. Definisci le intestazioni e mappale ai campi JSON
+            const headers = [
+                "Nome", "Cognome", "Genere", "Data Nascita", "Classe", 
+                "Specialità", "Categoria Peso", "Cintura", "Società", 
+                "Email Società", "Creato Il"
+            ];
+            
+            let csv = headers.join(',') + '\n';
+
+            // 2. Mappa i dati della riga e formatta
+            data.forEach(atleta => {
+                const societaNome = atleta.societa ? atleta.societa.nome : '';
+                const societaEmail = atleta.societa ? atleta.societa.email : '';
+                const dataCreazione = atleta.created_at ? new Date(atleta.created_at).toLocaleDateString() : '';
+                
+                const row = [
+                    atleta.first_name,
+                    atleta.last_name,
+                    atleta.gender,
+                    atleta.birthdate,
+                    atleta.classe,
+                    atleta.specialty,
+                    atleta.weight_category,
+                    atleta.belt,
+                    societaNome,
+                    societaEmail,
+                    dataCreazione
+                ].map(field => `"${String(field).replace(/"/g, '""')}"`).join(','); // Aggiungi virgolette per gestire i campi con virgole
+                
+                csv += row + '\n';
+            });
+
+            // 3. Crea e scarica il file
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            if (link.download !== undefined) {
+                const url = URL.createObjectURL(blob);
+                link.setAttribute("href", url);
+                link.setAttribute("download", "atleti_supabase.csv");
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+        }
+
+        // 6. Avvia il recupero dei dati al caricamento dello script
         fetchAtleti();
     </script>
 
