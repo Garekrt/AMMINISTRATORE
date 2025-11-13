@@ -6,17 +6,20 @@
     <title>Dati Atleti Supabase</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; }
-        #loading { color: blue; }
-        #error { color: red; }
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; }
+        h1 { color: #1e88e5; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); background-color: white; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background-color: #bbdefb; color: #1e88e5; font-weight: bold; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+        tr:hover { background-color: #e3f2fd; }
+        #loading { color: orange; font-weight: bold; }
+        #error { color: red; font-weight: bold; padding: 10px; border: 1px solid red; background-color: #ffebee; display: none; }
     </style>
 </head>
 <body>
 
-    <h1>Elenco Atleti con Società</h1>
+    <h1>Elenco Atleti con Società (Supabase)</h1>
 
     <div id="loading">Caricamento dati...</div>
     <div id="error" style="display: none;"></div>
@@ -24,14 +27,14 @@
         </div>
 
     <script>
-        // *** 1. CONFIGURAZIONE SUPABASE ***
-        // SOSTITUISCI CON I TUOI VALORI REALI!
+        // *** 2. CONFIGURAZIONE SUPABASE - SOSTITUISCI QUESTI VALORI ***
         const SUPABASE_URL = 'https://biuvdnwscvijltnqjxxe.supabase.co'; 
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJpdXZkbndzY3Zpamx0bnFqeHhlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1ODU1MjEwNiwiZXhwIjoyMDc0MTI4MTA2fQ.LkYdTsVio-lEDV8Uycpol_u41p8IUBbrNjofmDymsHQ'; 
 
-        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Creazione del client Supabase. Usiamo 'supabaseClient' per EVITARE l'errore TDZ.
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // *** 2. FUNZIONE PER IL FETCH DEI DATI ***
+        // *** 3. FUNZIONE PER IL FETCH DEI DATI ***
         async function fetchAtleti() {
             const loading = document.getElementById('loading');
             const errorDiv = document.getElementById('error');
@@ -39,15 +42,12 @@
 
             loading.style.display = 'block';
             errorDiv.style.display = 'none';
-            container.innerHTML = ''; // Pulisci il contenuto precedente
+            container.innerHTML = ''; 
 
-            // La tua query SQL è un JOIN implicito.
-            // In Supabase JS, questo viene gestito usando la sintassi `select()` annidata.
-            // Assumo che la Foreign Key in 'atleti' sia 'society_id' che punta a 'societa(id)'.
-            // I nomi delle colonne sono ripresi direttamente dalla tua SELECT:
-            // a.first_name, ..., s.nome AS societa_nome, s.email AS mail_societa
-            const { data: atleti, error } = await supabase
-                .from('atleti') // Dalla tabella principale (Alias 'a' nel tuo SQL)
+            // Query Supabase: Equivalente del tuo JOIN SQL
+            // La Foreign Key 'society_id' in 'atleti' viene usata per il JOIN implicito con la tabella 'societa'.
+            const { data: atleti, error } = await supabaseClient
+                .from('atleti') 
                 .select(`
                     first_name,
                     last_name,
@@ -58,9 +58,9 @@
                     weight_category,
                     belt,
                     created_at,
-                    societa:society_id ( // Il nome della relazione: 'societa' e il nome della FK: 'society_id'
-                        nome,
-                        email
+                    societa:society_id ( // Alias 'societa' per la relazione 'society_id'
+                        nome,             // s.nome AS societa_nome
+                        email             // s.email AS mail_societa
                     )
                 `);
 
@@ -68,12 +68,12 @@
 
             if (error) {
                 console.error('Errore nel recupero dati:', error);
-                errorDiv.textContent = 'Errore nel recupero dati: ' + error.message;
+                errorDiv.textContent = 'Errore nel recupero dati: ' + error.message + '. Controlla RLS e credenziali.';
                 errorDiv.style.display = 'block';
                 return;
             }
             
-            // *** 3. RENDERING DEI DATI ***
+            // *** 4. RENDERING DEI DATI IN UNA TABELLA HTML ***
             if (atleti && atleti.length > 0) {
                 let tableHTML = '<table>';
                 tableHTML += `
@@ -81,14 +81,14 @@
                         <tr>
                             <th>Nome</th>
                             <th>Cognome</th>
-                            <th>Società</th>
-                            <th>Email Società</th>
                             <th>Genere</th>
                             <th>Data Nascita</th>
                             <th>Classe</th>
                             <th>Specialità</th>
-                            <th>Categoria Peso</th>
+                            <th>Peso</th>
                             <th>Cintura</th>
+                            <th>Società</th>
+                            <th>Email Società</th>
                             <th>Creato Il</th>
                         </tr>
                     </thead>
@@ -96,23 +96,24 @@
                 `;
 
                 atleti.forEach(atleta => {
-                    // Accedi ai dati del JOIN tramite l'oggetto 'societa'
+                    // Accesso ai dati della tabella 'societa' tramite la relazione 'societa'
                     const societaNome = atleta.societa ? atleta.societa.nome : 'N/D';
                     const societaEmail = atleta.societa ? atleta.societa.email : 'N/D';
+                    const dataCreazione = atleta.created_at ? new Date(atleta.created_at).toLocaleDateString() : 'N/D';
                     
                     tableHTML += `
                         <tr>
                             <td>${atleta.first_name}</td>
                             <td>${atleta.last_name}</td>
-                            <td>${societaNome}</td>
-                            <td>${societaEmail}</td>
                             <td>${atleta.gender}</td>
                             <td>${atleta.birthdate}</td>
                             <td>${atleta.classe}</td>
                             <td>${atleta.specialty}</td>
                             <td>${atleta.weight_category}</td>
                             <td>${atleta.belt}</td>
-                            <td>${new Date(atleta.created_at).toLocaleDateString()}</td>
+                            <td>${societaNome}</td>
+                            <td>${societaEmail}</td>
+                            <td>${dataCreazione}</td>
                         </tr>
                     `;
                 });
@@ -120,11 +121,11 @@
                 tableHTML += '</tbody></table>';
                 container.innerHTML = tableHTML;
             } else {
-                container.innerHTML = '<p>Nessun atleta trovato.</p>';
+                container.innerHTML = '<p>Nessun atleta trovato o verifica la RLS (Row Level Security) e la Policy di lettura sulla tabella "atleti".</p>';
             }
         }
 
-        // Avvia il recupero dei dati al caricamento della pagina
+        // 5. Avvia il recupero dei dati al caricamento dello script
         fetchAtleti();
     </script>
 
