@@ -12,20 +12,25 @@
         #auth-container { max-width: 400px; margin: 50px auto; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); text-align: center; }
         #auth-container input { width: 90%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; }
         /* Stili per i Controlli e i Dati */
-        #controls { margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+        #content-container { padding-top: 20px; }
+        #controls { margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        #search-group { display: flex; align-items: center; gap: 10px; }
+        #search-input { padding: 8px; border: 1px solid #ccc; border-radius: 4px; width: 250px; }
         #row-count { font-size: 1.2em; font-weight: bold; color: #00897b; }
         button { padding: 10px 15px; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 1em; transition: background-color 0.3s; margin-left: 10px; }
         #login-btn { background-color: #1e88e5; }
-        #login-btn:hover { background-color: #1565c0; }
         #export-csv-btn { background-color: #4caf50; }
-        #export-csv-btn:hover { background-color: #388e3c; }
         #logout-btn { background-color: #f44336; }
-        #logout-btn:hover { background-color: #d32f2f; }
         
         table { width: 100%; border-collapse: collapse; margin-top: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); background-color: white; }
         th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-        th { background-color: #bbdefb; color: #1e88e5; font-weight: bold; }
-        tr:nth-child(even) { background-color: #f9f9f9; }
+        th { background-color: #bbdefb; color: #1e88e5; font-weight: bold; cursor: pointer; user-select: none; }
+        th:hover { background-color: #90caf9; }
+        /* Stile per l'indicatore di ordinamento */
+        .sort-icon { margin-left: 5px; font-size: 0.8em; }
+        .sorted-asc .sort-icon::after { content: ' ▲'; }
+        .sorted-desc .sort-icon::after { content: ' ▼'; }
+        
         #loading { color: orange; font-weight: bold; }
         #error, #auth-message { color: red; font-weight: bold; margin-top: 10px; }
     </style>
@@ -44,7 +49,10 @@
 
     <div id="content-container" style="display: none;">
         <div id="controls">
-            <span id="row-count"></span>
+            <div id="search-group">
+                <input type="text" id="search-input" placeholder="Cerca per Nome, Specialità o Società">
+                <span id="row-count"></span>
+            </div>
             <div>
                 <button id="export-csv-btn" disabled>Esporta in CSV</button>
                 <button id="logout-btn">Esci</button>
@@ -64,6 +72,11 @@
 
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+        // VARIABILI GLOBALI PER FILTRO E ORDINAMENTO
+        let allAtletiData = []; // Memorizza tutti i dati originali
+        let currentSortColumn = 'last_name';
+        let currentSortDirection = 'asc';
+
         // Riferimenti agli elementi DOM
         const authContainer = document.getElementById('auth-container');
         const contentContainer = document.getElementById('content-container');
@@ -72,24 +85,27 @@
         const authMessage = document.getElementById('auth-message');
         const emailInput = document.getElementById('email');
         const passwordInput = document.getElementById('password');
+        const searchInput = document.getElementById('search-input');
+        const exportButton = document.getElementById('export-csv-btn');
+        const loading = document.getElementById('loading');
+        const errorDiv = document.getElementById('error');
+        const container = document.getElementById('atleti-container');
+        const rowCountSpan = document.getElementById('row-count');
 
-        // Funzione principale che gestisce la visualizzazione del contenuto protetto
+        // --- GESTIONE AUTENTICAZIONE ---
+
         function displayContent(session) {
             if (session) {
-                // Utente autenticato: mostra il contenuto, nasconde il login
                 authContainer.style.display = 'none';
                 contentContainer.style.display = 'block';
-                fetchAtleti(); // Carica i dati
+                fetchAtleti(); 
             } else {
-                // Utente non autenticato: mostra il login, nasconde il contenuto
                 authContainer.style.display = 'block';
                 contentContainer.style.display = 'none';
-                // Pulisci i dati se l'utente esce o la sessione scade
-                document.getElementById('atleti-container').innerHTML = '';
+                container.innerHTML = '';
             }
         }
 
-        // *** LOGICA DI AUTENTICAZIONE ***
         async function handleLogin() {
             authMessage.textContent = '';
             loginButton.textContent = 'Accesso...';
@@ -116,46 +132,31 @@
             }
         }
 
-        // Ascolta i cambiamenti di stato (login, logout, refresh)
         supabaseClient.auth.onAuthStateChange((event, session) => {
             displayContent(session);
         });
 
-        // Associa i listener ai bottoni
         loginButton.addEventListener('click', handleLogin);
         logoutButton.addEventListener('click', handleLogout);
+        
+        // Collega la funzione di filtro all'input di ricerca
+        searchInput.addEventListener('input', applyFiltersAndSorting);
 
-        // *** FUNZIONE PER IL FETCH DEI DATI E RENDERING ***
+
+        // --- GESTIONE DATI: FETCH, FILTRO, ORDINE, RENDER ---
+
         async function fetchAtleti() {
-            const loading = document.getElementById('loading');
-            const errorDiv = document.getElementById('error');
-            const container = document.getElementById('atleti-container');
-            const controls = document.getElementById('controls');
-            const rowCountSpan = document.getElementById('row-count');
-            const exportButton = document.getElementById('export-csv-btn');
-
             loading.style.display = 'block';
             errorDiv.style.display = 'none';
             container.innerHTML = ''; 
             exportButton.disabled = true;
 
-            // Query Supabase: richiede che l'utente sia autenticato (RLS)
-            const { data: atleti, error } = await supabaseClient
+            const { data, error } = await supabaseClient
                 .from('atleti') 
                 .select(`
-                    first_name,
-                    last_name,
-                    gender,
-                    birthdate,
-                    classe,
-                    specialty,
-                    weight_category,
-                    belt,
-                    created_at,
-                    societa:society_id (
-                        nome,
-                        email
-                    )
+                    first_name, last_name, gender, birthdate, classe, specialty, 
+                    weight_category, belt, created_at,
+                    societa:society_id ( nome, email )
                 `);
 
             loading.style.display = 'none';
@@ -167,52 +168,139 @@
                 return;
             }
             
-            // RENDERING E CONTATORE 
-            if (atleti && atleti.length > 0) {
-                // Aggiorna il contatore
-                rowCountSpan.textContent = `Totale Atleti: ${atleti.length}`;
-                exportButton.disabled = false;
-                
-                let tableHTML = '<table>';
-                tableHTML += `
-                    <thead>
-                        <tr>
-                            <th>Nome</th><th>Cognome</th><th>Genere</th><th>Data Nascita</th>
-                            <th>Classe</th><th>Specialità</th><th>Peso</th><th>Cintura</th>
-                            <th>Società</th><th>Email Società</th><th>Creato Il</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                `;
-
-                atleti.forEach(atleta => {
-                    const societaNome = atleta.societa ? atleta.societa.nome : 'N/D';
-                    const societaEmail = atleta.societa ? atleta.societa.email : 'N/D';
-                    const dataCreazione = atleta.created_at ? new Date(atleta.created_at).toLocaleDateString() : 'N/D';
-                    
-                    tableHTML += `
-                        <tr>
-                            <td>${atleta.first_name}</td><td>${atleta.last_name}</td><td>${atleta.gender}</td>
-                            <td>${atleta.birthdate}</td><td>${atleta.classe}</td><td>${atleta.specialty}</td>
-                            <td>${atleta.weight_category}</td><td>${atleta.belt}</td><td>${societaNome}</td>
-                            <td>${societaEmail}</td><td>${dataCreazione}</td>
-                        </tr>
-                    `;
-                });
-
-                tableHTML += '</tbody></table>';
-                container.innerHTML = tableHTML;
-                
-                // Associa la funzione di esportazione al pulsante
-                exportButton.onclick = () => exportToCSV(atleti);
-
+            if (data && data.length > 0) {
+                allAtletiData = data; // Salva i dati originali
+                applyFiltersAndSorting(); // Applica ordinamento e filtro iniziali
+                exportButton.onclick = () => exportToCSV(allAtletiData); // Associa export ai dati completi
             } else {
                 container.innerHTML = '<p>Nessun atleta trovato.</p>';
                 rowCountSpan.textContent = `Totale Atleti: 0`;
             }
         } 
         
-        // *** FUNZIONE DI ESPORTAZIONE CSV ***
+        // Funzione per filtrare e ordinare i dati prima del rendering
+        function applyFiltersAndSorting() {
+            let displayData = [...allAtletiData]; // Copia i dati originali
+            
+            // 1. FILTRAGGIO
+            const searchTerm = searchInput.value.toLowerCase().trim();
+            if (searchTerm) {
+                displayData = displayData.filter(atleta => {
+                    // Cerca in vari campi (Nome, Cognome, Specialità, Nome Società)
+                    return (
+                        (atleta.first_name && atleta.first_name.toLowerCase().includes(searchTerm)) ||
+                        (atleta.last_name && atleta.last_name.toLowerCase().includes(searchTerm)) ||
+                        (atleta.specialty && atleta.specialty.toLowerCase().includes(searchTerm)) ||
+                        (atleta.societa && atleta.societa.nome && atleta.societa.nome.toLowerCase().includes(searchTerm))
+                    );
+                });
+            }
+
+            // 2. ORDINAMENTO
+            displayData.sort((a, b) => {
+                let aVal = a[currentSortColumn] || (a.societa && a.societa[currentSortColumn.replace('societa.', '')]) || '';
+                let bVal = b[currentSortColumn] || (b.societa && b.societa[currentSortColumn.replace('societa.', '')]) || '';
+
+                // Gestione dei valori nulli o non definiti
+                if (aVal === '') aVal = currentSortDirection === 'asc' ? 'zzzzzzz' : '';
+                if (bVal === '') bVal = currentSortDirection === 'asc' ? 'zzzzzzz' : '';
+                
+                // Conversione per l'ordinamento numerico e di data (base)
+                if (!isNaN(Date.parse(aVal)) && !isNaN(Date.parse(bVal))) {
+                     aVal = new Date(aVal);
+                     bVal = new Date(bVal);
+                } else if (!isNaN(parseFloat(aVal)) && !isNaN(parseFloat(bVal))) {
+                     aVal = parseFloat(aVal);
+                     bVal = parseFloat(bVal);
+                } else {
+                     aVal = String(aVal).toLowerCase();
+                     bVal = String(bVal).toLowerCase();
+                }
+
+                if (aVal < bVal) return currentSortDirection === 'asc' ? -1 : 1;
+                if (aVal > bVal) return currentSortDirection === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            // 3. RENDERING
+            renderAtletiTable(displayData);
+        }
+
+        // Funzione per gestire il click sull'intestazione per l'ordinamento
+        window.handleSort = function(column) {
+            if (currentSortColumn === column) {
+                currentSortDirection = currentSortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSortColumn = column;
+                currentSortDirection = 'asc';
+            }
+            applyFiltersAndSorting();
+        }
+
+        // Funzione per disegnare la tabella HTML
+        function renderAtletiTable(atleti) {
+            rowCountSpan.textContent = `Risultati: ${atleti.length} / ${allAtletiData.length}`;
+            exportButton.disabled = allAtletiData.length === 0;
+
+            if (atleti.length === 0) {
+                container.innerHTML = '<p>Nessun risultato trovato per la ricerca corrente.</p>';
+                return;
+            }
+
+            let tableHTML = '<table>';
+            tableHTML += `
+                <thead>
+                    <tr>
+                        ${generateHeader('first_name', 'Nome')}
+                        ${generateHeader('last_name', 'Cognome')}
+                        ${generateHeader('gender', 'Genere')}
+                        ${generateHeader('birthdate', 'Data Nascita')}
+                        ${generateHeader('classe', 'Classe')}
+                        ${generateHeader('specialty', 'Specialità')}
+                        ${generateHeader('weight_category', 'Peso')}
+                        ${generateHeader('belt', 'Cintura')}
+                        ${generateHeader('societa.nome', 'Società')}
+                        ${generateHeader('societa.email', 'Email Società')}
+                        ${generateHeader('created_at', 'Creato Il')}
+                    </tr>
+                </thead>
+                <tbody>
+            `;
+
+            atleti.forEach(atleta => {
+                const societaNome = atleta.societa ? atleta.societa.nome : 'N/D';
+                const societaEmail = atleta.societa ? atleta.societa.email : 'N/D';
+                const dataCreazione = atleta.created_at ? new Date(atleta.created_at).toLocaleDateString() : 'N/D';
+                
+                tableHTML += `
+                    <tr>
+                        <td>${atleta.first_name || 'N/D'}</td>
+                        <td>${atleta.last_name || 'N/D'}</td>
+                        <td>${atleta.gender || 'N/D'}</td>
+                        <td>${atleta.birthdate || 'N/D'}</td>
+                        <td>${atleta.classe || 'N/D'}</td>
+                        <td>${atleta.specialty || 'N/D'}</td>
+                        <td>${atleta.weight_category || 'N/D'}</td>
+                        <td>${atleta.belt || 'N/D'}</td>
+                        <td>${societaNome}</td>
+                        <td>${societaEmail}</td>
+                        <td>${dataCreazione}</td>
+                    </tr>
+                `;
+            });
+
+            tableHTML += '</tbody></table>';
+            container.innerHTML = tableHTML;
+        }
+
+        // Funzione di supporto per generare l'header con la logica di sorting
+        function generateHeader(column, label) {
+            const isCurrent = currentSortColumn === column;
+            const sortClass = isCurrent ? `sorted-${currentSortDirection}` : '';
+            return `<th onclick="handleSort('${column}')" class="${sortClass}">${label}<span class="sort-icon"></span></th>`;
+        }
+
+        // --- FUNZIONE DI ESPORTAZIONE CSV (Invariata) ---
         function exportToCSV(data) {
             if (!data || data.length === 0) return;
 
@@ -229,17 +317,15 @@
                 const societaEmail = atleta.societa ? atleta.societa.email : '';
                 const dataCreazione = atleta.created_at ? new Date(atleta.created_at).toLocaleDateString() : '';
                 
-                // Mappa i campi e li racchiude tra virgolette per la compatibilità CSV
                 const row = [
                     atleta.first_name, atleta.last_name, atleta.gender, atleta.birthdate, 
                     atleta.classe, atleta.specialty, atleta.weight_category, atleta.belt, 
                     societaNome, societaEmail, dataCreazione
-                ].map(field => `"${String(field).replace(/"/g, '""')}"`).join(','); 
+                ].map(field => `"${String(field || '').replace(/"/g, '""')}"`).join(','); 
                 
                 csv += row + '\n';
             });
 
-            // Crea e scarica il file
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
             if (link.download !== undefined) {
@@ -252,7 +338,6 @@
                 document.body.removeChild(link);
             }
         }
-
     </script>
 </body>
 </html>
