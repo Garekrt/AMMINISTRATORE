@@ -50,7 +50,7 @@
     <div id="content-container" style="display: none;">
         <div id="controls">
             <div id="search-group">
-                <input type="text" id="search-input" placeholder="Cerca per Nome, Specialità o Società">
+                <input type="text" id="search-input" placeholder="Cerca per Nome, Specialità o altro">
                 <span id="row-count"></span>
             </div>
             <div>
@@ -190,7 +190,9 @@
                         (atleta.first_name && atleta.first_name.toLowerCase().includes(searchTerm)) ||
                         (atleta.last_name && atleta.last_name.toLowerCase().includes(searchTerm)) ||
                         (atleta.specialty && atleta.specialty.toLowerCase().includes(searchTerm)) ||
-                        (atleta.societa && atleta.societa.nome && atleta.societa.nome.toLowerCase().includes(searchTerm))
+                         (atleta.class && atleta.class.toLowerCase().includes(searchTerm)) ||
+                         (atleta.gender && atleta.gender.toLowerCase().includes(searchTerm)) ||
+                       (atleta.societa && atleta.societa.nome && atleta.societa.nome.toLowerCase().includes(searchTerm))
                     );
                 });
             }
