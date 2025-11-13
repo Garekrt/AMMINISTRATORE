@@ -36,42 +36,94 @@
 
         // *** 3. FUNZIONE PER IL FETCH DEI DATI ***
         async function fetchAtleti() {
-            const loading = document.getElementById('loading');
-            const errorDiv = document.getElementById('error');
-            const container = document.getElementById('atleti-container');
+    const loading = document.getElementById('loading');
+    const errorDiv = document.getElementById('error');
+    const container = document.getElementById('atleti-container');
 
-            loading.style.display = 'block';
-            errorDiv.style.display = 'none';
-            container.innerHTML = ''; 
+    loading.style.display = 'block';
+    errorDiv.style.display = 'none';
+    container.innerHTML = ''; 
 
-            // Query Supabase: Equivalente del tuo JOIN SQL
-            // La Foreign Key 'society_id' in 'atleti' viene usata per il JOIN implicito con la tabella 'societa'.
-            const { data: atleti, error } = await supabaseClient
-                .from('atleti') 
-                .select(`
-                    first_name,
-                    last_name,
-                    gender,
-                    birthdate,
-                    classe,
-                    specialty,
-                    weight_category,
-                    belt,
-                    created_at,
-                    societa:society_id ( // Alias 'societa' per la relazione 'society_id'
-                        nome,             // s.nome AS societa_nome
-                        email             // s.email AS mail_societa
-                    )
-                `);
+    // Query Supabase: SENZA COMMENTI ALL'INTERNO DELLA STRINGA TEMPLATE
+    const { data: atleti, error } = await supabaseClient
+        .from('atleti') 
+        .select(`
+            first_name,
+            last_name,
+            gender,
+            birthdate,
+            classe,
+            specialty,
+            weight_category,
+            belt,
+            created_at,
+            societa:society_id (
+                nome,
+                email
+            )
+        `);
 
-            loading.style.display = 'none';
+    loading.style.display = 'none';
 
-            if (error) {
-                console.error('Errore nel recupero dati:', error);
-                errorDiv.textContent = 'Errore nel recupero dati: ' + error.message + '. Controlla RLS e credenziali.';
-                errorDiv.style.display = 'block';
-                return;
-            }
+    if (error) {
+        console.error('Errore nel recupero dati:', error);
+        // Messaggio d'errore più chiaro per l'utente
+        errorDiv.textContent = 'Errore nel recupero dati: ' + error.message + '. Verifica RLS e credenziali.';
+        errorDiv.style.display = 'block';
+        return;
+    }
+    
+    // ... (il resto del codice di rendering è corretto)
+    if (atleti && atleti.length > 0) {
+        let tableHTML = '<table>';
+        // ... (intestazione tabella)
+        tableHTML += `
+            <thead>
+                <tr>
+                    <th>Nome</th>
+                    <th>Cognome</th>
+                    <th>Genere</th>
+                    <th>Data Nascita</th>
+                    <th>Classe</th>
+                    <th>Specialità</th>
+                    <th>Peso</th>
+                    <th>Cintura</th>
+                    <th>Società</th>
+                    <th>Email Società</th>
+                    <th>Creato Il</th>
+                </tr>
+            </thead>
+            <tbody>
+        `;
+
+        atleti.forEach(atleta => {
+            const societaNome = atleta.societa ? atleta.societa.nome : 'N/D';
+            const societaEmail = atleta.societa ? atleta.societa.email : 'N/D';
+            const dataCreazione = atleta.created_at ? new Date(atleta.created_at).toLocaleDateString() : 'N/D';
+            
+            tableHTML += `
+                <tr>
+                    <td>${atleta.first_name}</td>
+                    <td>${atleta.last_name}</td>
+                    <td>${atleta.gender}</td>
+                    <td>${atleta.birthdate}</td>
+                    <td>${atleta.classe}</td>
+                    <td>${atleta.specialty}</td>
+                    <td>${atleta.weight_category}</td>
+                    <td>${atleta.belt}</td>
+                    <td>${societaNome}</td>
+                    <td>${societaEmail}</td>
+                    <td>${dataCreazione}</td>
+                </tr>
+            `;
+        });
+
+        tableHTML += '</tbody></table>';
+        container.innerHTML = tableHTML;
+    } else {
+        container.innerHTML = '<p>Nessun atleta trovato o verifica la Policy di lettura sulla tabella "atleti".</p>';
+    }
+}
             
             // *** 4. RENDERING DEI DATI IN UNA TABELLA HTML ***
             if (atleti && atleti.length > 0) {
